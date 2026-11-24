@@ -1,0 +1,272 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  termsAcceptedAt     DateTime?
+  id                  String               @id @default(cuid())
+  name                String?
+  email               String               @unique
+  passwordHash        String
+  // 2026-11-10 (auditoria builder/design): apps com needsWhatsApp/needsTelegram
+  // geram codigo que faz user.phone / select phone:true sem o campo existir no
+  // schema (ex: lembrete de agendamento via WhatsApp) - 500 em runtime
+  // ("Unknown field 'phone'"). Campo opcional na fundacao resolve pra TODO app
+  // futuro, nao so o que tinha o bug.
+  phone               String?
+  plan                String               @default("free")
+  // 🩹 2026-09-01: apps com múltiplos papéis (jogador/dono, recepção/vet/admin…)
+  // faziam `prisma.user.findMany({ where: { role } })` e o build quebrava
+  // (TS2353: 'role' não existe em UserWhereInput). Agora a fundação tem o campo.
+  role                String               @default("user")
+  stripeCustomerId    String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  projects            Project[]
+  barber              Barber?
+  appointments        Appointment[]        @relation("AppointmentClient")
+  reviews             Review[]
+  loyaltyAccount      LoyaltyAccount?
+  notifications       Notification[]
+  passwordResetTokens PasswordResetToken[]
+  barberId            String?
+  loyaltyAccountId    String?
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
+}
+
+model Barber {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nomeCompleto    String
+  apelido         String?
+  emailContato    String
+  telefoneCelular String
+  fotoPerfil      String?
+  especialidades  String?
+  ativo           Boolean @default(true)
+  bio             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments   Appointment[]   @relation("AppointmentBarber")
+  scheduleBlocks ScheduleBlock[]
+  reviews        Review[]
+}
+
+model Service {
+  id                String  @id @default(cuid())
+  nomeServico       String
+  descricao         String?
+  duracaoMinutos    Int
+  preco             Decimal @db.Decimal(10, 2)
+  categoria         String // corte | barba | combo | sobrancelha | outro
+  ativo             Boolean @default(true)
+  imagemIlustrativa String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+  reviews      Review[]
+}
+
+model Appointment {
+  id String @id @default(cuid())
+
+  clientId String
+  client   User   @relation("AppointmentClient", fields: [clientId], references: [id], onDelete: Cascade)
+
+  barberId String
+  barber   Barber @relation("AppointmentBarber", fields: [barberId], references: [id], onDelete: Restrict)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  dataAgendamento DateTime @db.Date
+  horaInicio      String // "HH:mm"
+  horaFim         String // "HH:mm"
+  status          String   @default("confirmado") // confirmado | cancelado | atendido | no_show | reagendado
+  valorTotal      Decimal  @db.Decimal(10, 2)
+  observacoes     String?
+  compareceu      Boolean?
+  canalOrigem     String? // web | whatsapp | balcao
+
+  // Controle de overbooking — slot único por barbeiro/data/hora
+  slotKey String @unique // `${barberId}|${YYYY-MM-DD}|${HH:mm}`
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  review              Review?
+  loyaltyTransactions LoyaltyTransaction[]
+  notifications       Notification[]
+  reviewId            String?
+
+  @@index([barberId, dataAgendamento])
+  @@index([clientId, dataAgendamento])
+  @@index([status])
+  @@index([clientId])
+  @@index([barberId])
+  @@index([serviceId])
+}
+
+model ScheduleBlock {
+  id String @id @default(cuid())
+
+  barberId String
+  barber   Barber @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  dataBloqueio DateTime @db.Date
+  horaInicio   String // "HH:mm"
+  horaFim      String // "HH:mm"
+  motivo       String // almoco | folga | feriado | outro
+  descricao    String?
+  recorrente   Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([barberId, dataBloqueio])
+  @@index([barberId])
+}
+
+model Review {
+  id String @id @default(cuid())
+
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  barberId String
+  barber   Barber @relation(fields: [barberId], references: [id], onDelete: Restrict)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  // Autor da avaliação (cliente)
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  notaAtendimento  Int // 1..5
+  comentario       String?
+  dataAvaliacao    DateTime @default(now())
+  destaquePositivo String?
+  recomenda        Boolean?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([barberId])
+  @@index([serviceId])
+  @@index([authorId])
+}
+
+model LoyaltyAccount {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nomeCliente     String
+  emailCliente    String
+  telefoneCliente String
+  saldoPontos     Int      @default(0)
+  nivelFidelidade String   @default("bronze") // bronze | prata | ouro
+  dataAdesao      DateTime @default(now())
+  ativo           Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions LoyaltyTransaction[]
+}
+
+model LoyaltyTransaction {
+  id String @id @default(cuid())
+
+  accountId String
+  account   LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  tipoMovimento      String // ganho | resgate | ajuste | expiracao
+  quantidadePontos   Int
+  dataMovimento      DateTime @default(now())
+  descricao          String?
+  saldoAposMovimento Int
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, dataMovimento])
+  @@index([accountId])
+  @@index([appointmentId])
+}
+
+model Notification {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  titulo          String
+  mensagem        String
+  tipoNotificacao String // confirmacao | cancelamento | lembrete | avaliacao | sistema
+  canalEnvio      String   @default("in_app") // in_app | whatsapp | email
+  dataEnvio       DateTime @default(now())
+  horaEnvio       String // "HH:mm"
+  lida            Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, lida])
+  @@index([userId])
+  @@index([appointmentId])
+}
+
+model PasswordResetToken {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model BusinessSettings {
+  id                    String   @id @default(cuid())
+  nomeNegocio           String   @default("Barbearia Dom Corte")
+  telefone              String?
+  endereco              String?
+  horarioAbertura       String   @default("09:00")
+  horarioFechamento     String   @default("19:00")
+  diasFuncionamento     String   @default("1,2,3,4,5,6") // 0=dom..6=sab
+  intervaloSlotMinutos  Int      @default(30)
+  whatsappLembreteAtivo Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}

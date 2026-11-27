@@ -1,38 +1,36 @@
-import Link from "next/link";
-import Image from "next/image";
-import ASSETS from "@/lib/assets";
+'use client';
+// jgnext:site-chrome — rodapé único: logo, slogan e links. Some se a tela já tiver rodapé próprio (home dos arquétipos).
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import ASSETS from '@/lib/assets';
+
+const NAV = {"links":[{"href":"/servicos","label":"Serviços"},{"href":"/contato","label":"Contato"},{"href":"/configuracoes","label":"Configuracoes"},{"href":"/criar-conta","label":"Criar conta"},{"href":"/entrar-google","label":"Entrar google"}],"cta":{"href":"/agendar","label":"Agendar"},"hasLogin":true,"account":"/meus-agendamentos","footer":[{"href":"/termos","label":"Termos de uso"},{"href":"/privacidade","label":"Privacidade"}]};
+const HIDE = [/^\/$/, /^\/login/, /^\/register/, /^\/cadastro/, /^\/redefinir-senha/, /^\/esqueci-senha/, /^\/admin/];
 
 export function SiteFooter() {
+  const pathname = usePathname() || '/';
+  const [own, setOwn] = useState(false);
+  useEffect(() => { setOwn(document.querySelectorAll('footer:not([data-site-footer])').length > 0); }, [pathname]);
+  if (own || HIDE.some((re) => re.test(pathname))) return null;
+  const all = [...NAV.links, ...(NAV.cta ? [NAV.cta] : []), ...NAV.footer];
   return (
-    <footer className="mt-20 border-t border-border bg-surface/60">
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 md:grid-cols-3">
+    <footer data-site-footer className="mt-20 border-t border-border bg-surface/70 backdrop-blur">
+      <div className="mx-auto grid max-w-6xl gap-8 px-5 py-12 sm:grid-cols-[1.3fr_1fr] sm:px-6">
         <div>
-          <div className="flex items-center gap-2">
-            <Image src={ASSETS.logo} alt={ASSETS.name} width={32} height={32} className="rounded-md" />
-            <span className="font-display text-lg font-semibold">{ASSETS.name}</span>
-          </div>
-          <p className="mt-3 text-sm text-fg-muted">{ASSETS.slogan}</p>
+          <Link href="/" className="inline-flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={ASSETS.logo} alt="" width={36} height={36} className="h-9 w-9 rounded-lg" />
+            <span className="font-display text-lg font-bold tracking-tight">{ASSETS.name}</span>
+          </Link>
+          {ASSETS.slogan && <p className="mt-3 max-w-sm text-sm text-fg-muted">{ASSETS.slogan}</p>}
         </div>
-        <div className="text-sm">
-          <p className="font-display text-base font-semibold">Navegar</p>
-          <ul className="mt-3 space-y-2 text-fg-muted">
-            <li><Link href="/servicos" className="hover:text-fg">Serviços</Link></li>
-            <li><Link href="/agendar" className="hover:text-fg">Agendar</Link></li>
-            <li><Link href="/contato" className="hover:text-fg">Contato e localização</Link></li>
-            <li><Link href="/primeiros-passos" className="hover:text-fg">Primeiros passos</Link></li>
-          </ul>
-        </div>
-        <div className="text-sm">
-          <p className="font-display text-base font-semibold">Legal</p>
-          <ul className="mt-3 space-y-2 text-fg-muted">
-            <li><Link href="/termos" className="hover:text-fg">Termos de uso</Link></li>
-            <li><Link href="/privacidade" className="hover:text-fg">Política de privacidade</Link></li>
-          </ul>
-        </div>
+        <ul className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+          {all.map((l: any) => <li key={l.href}><Link href={l.href} className="text-fg-muted transition hover:text-brand">{l.label}</Link></li>)}
+        </ul>
       </div>
-      <div className="border-t border-border px-4 py-4 text-center text-xs text-fg-muted">
-        {ASSETS.name} · Volta Redonda, RJ · {ASSETS.slogan}
-      </div>
+      <div className="border-t border-border px-5 py-5 text-center text-xs text-fg-muted">© {new Date().getFullYear()} {ASSETS.name}. Todos os direitos reservados.</div>
     </footer>
   );
 }
+export default SiteFooter;

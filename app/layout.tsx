@@ -1,4 +1,6 @@
 import { JgnextAssistant } from "@/components/jgnext-assistant";
+import { SiteFooter } from '@/components/site-footer';
+import { A11yPolish } from '@/components/a11y-polish';
 import CookieConsent from '@/components/cookie-consent';
 import { AppNav } from "@/components/app-nav";
 import type { Metadata } from "next";
@@ -25,7 +27,8 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={`${body.variable} ${display.variable}`}>
       <body className="min-h-screen font-sans antialiased">
-        <Providers><AppNav />{children}</Providers>
+        <A11yPolish />
+        <Providers><AppNav />{children}<SiteFooter /></Providers>
               <JgnextAssistant />
         <CookieConsent />
         <GuidePill />
